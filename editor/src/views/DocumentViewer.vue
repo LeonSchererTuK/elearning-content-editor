@@ -197,7 +197,7 @@
         "
       >
         <h1>
-          <GradientFont start-color="purple" end-color="#ff26a4">
+          <GradientFont :start-color="logoStartColor" :end-color="logoEndColor">
             {{ $doc.selectedDocument?.header }}
           </GradientFont>
         </h1>
@@ -259,6 +259,11 @@ const answerDependingDocuments: Ref<DocumentMeta[]> = ref([]);
 const searchText = ref('');
 const showSearchResults = ref(false);
 const searchResults: Ref<DocumentSearchResult[]> = ref([]);
+
+const appName = import.meta.env.VITE_TEMPLATE_APP_NAME ?? 'RevDocs';
+const logoUrl = import.meta.env.VITE_TEMPLATE_LOGO_URL ?? "./../assets/logo.png";
+const logoStartColor = import.meta.env.VITE_TEMPLATE_LOGO_START_COLOR ?? "#eaa3ff";
+const logoEndColor = import.meta.env.VITE_TEMPLATE_LOGO_END_COLOR ?? "#5e085a";
 
 watch(searchText, () => {
   if (searchText.value.length > 0) {
