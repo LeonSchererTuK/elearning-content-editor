@@ -260,10 +260,9 @@ const searchText = ref('');
 const showSearchResults = ref(false);
 const searchResults: Ref<DocumentSearchResult[]> = ref([]);
 
-const appName = import.meta.env.VITE_TEMPLATE_APP_NAME ?? 'RevDocs';
-const logoUrl = import.meta.env.VITE_TEMPLATE_LOGO_URL ?? "./../assets/logo.png";
-const logoStartColor = import.meta.env.VITE_TEMPLATE_LOGO_START_COLOR ?? "#eaa3ff";
-const logoEndColor = import.meta.env.VITE_TEMPLATE_LOGO_END_COLOR ?? "#5e085a";
+const logoStartColor =
+  import.meta.env.VITE_TEMPLATE_LOGO_START_COLOR ?? '#eaa3ff';
+const logoEndColor = import.meta.env.VITE_TEMPLATE_LOGO_END_COLOR ?? '#5e085a';
 
 watch(searchText, () => {
   if (searchText.value.length > 0) {
@@ -278,12 +277,13 @@ const browserLanguageSupported = $doc.languages.find(
   (l) => l.code === navigator.language.split('-')[0],
 );
 
-
 const preferedLanguage = computed({
   get() {
-    return route.query.lang?.toString() ??
+    return (
+      route.query.lang?.toString() ??
       browserLanguageSupported?.code ??
-      $doc.baseLanguage;
+      $doc.baseLanguage
+    );
   },
 
   set(newLang: string) {
@@ -294,8 +294,8 @@ const preferedLanguage = computed({
       },
       query: { lang: newLang },
     });
-  }
-})
+  },
+});
 
 const page: ComputedRef<BlockPage> = computed(() => {
   return {
@@ -335,6 +335,12 @@ const search = async () => {
  * AI Search
  */
 const aiSearch = async () => {
+  if (questionText.value.length < 10) {
+    error('Please enter a question with at least 10 characters.');
+    return;
+  }
+  // clone question
+  const question = questionText.value + '';
   // reset old values
   resetSearch();
   // fetch new answer
@@ -342,9 +348,10 @@ const aiSearch = async () => {
   try {
     const res: AiSearchResult = await post(
       `${$global.aiSearchUrl}/question`,
-      { text: questionText.value, count: 5 },
+      { text: question, count: 5 },
       true,
     );
+
     answerText.value = res.answer;
     answerDependingDocuments.value = res.documents;
   } catch (e) {

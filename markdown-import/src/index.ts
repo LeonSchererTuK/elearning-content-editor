@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type { Root, Image as MarkdownImage } from "mdast";
+import type { Root, RootContent, Image as MarkdownImage } from "mdast";
 import { remark } from "remark";
 import remarkParse from "remark-parse";
 import { visit } from "unist-util-visit";
@@ -11,6 +11,7 @@ import { DocumentItem, Medium } from "./dataService/types";
 
 type TDocument = {
   name: string;
+  title?: string;
   path: string;
   type: "document" | "folder";
   translations: string[];
@@ -106,59 +107,89 @@ async function transformMarkdown(
   // Transform the tree.
   const blocks: UniversalBlock[] = [];
 
+  let mdStart: number | null = null;
+  let mdEnd: number | null = null;
+
+  const finishMdBlock = () => {
+    if (mdStart === null) return;
+    if (mdEnd === null) mdEnd = md.length;
+
+    const code = md.slice(mdStart, mdEnd);
+    if (!!code.trim()) {
+      blocks.push({
+        type: "markdown",
+        data: {
+          code,
+        },
+      });
+    }
+
+    // Reset positions.
+    mdStart = null;
+    mdEnd = null;
+  };
+
+  const nodeContainsOnlyImages = (node: RootContent) => {
+    if (node.type !== "paragraph") return false;
+
+    // Filter out text nodes that only contain whitespace.
+    const nodesWithoutEmptyText = node.children.filter(
+      (child) => child.type !== "text" || /\w/g.test(toString(child)),
+    );
+
+    // If the paragraph contains only images, insert an image block for each one.
+    if (nodesWithoutEmptyText.every((child) => child.type === "image"))
+      return nodesWithoutEmptyText as MarkdownImage[];
+
+    return false;
+  };
+
   for (const node of root.children) {
-    switch (node.type) {
-      case "heading":
-        {
-          blocks.push({
-            type: "header",
-            data: {
-              level: node.depth,
-              text: toString(node),
-            },
-          });
-        }
-        break;
+    // If the node has no position, we can't get the markdown source code.
+    if (!node.position) throw Error(`The node has no position.`);
 
-      case "paragraph":
-        {
-          // Filter out text nodes that only contain whitespace.
-          const nodesWithoutEmptyText = node.children.filter(
-            (child) => child.type !== "text" || /\w/g.test(toString(child)),
-          );
+    const onlyImages = nodeContainsOnlyImages(node);
 
-          // If the paragraph contains only images, insert an image block for each one.
-          if (nodesWithoutEmptyText.every((child) => child.type === "image")) {
-            const images = nodesWithoutEmptyText as MarkdownImage[];
+    if (onlyImages) {
+      // Finish the current markdown block.
+      finishMdBlock();
 
-            images.forEach((image) => {
-              // @ts-ignore
-              addMediumBlock(image.data.id);
-            });
-
-            break;
-          }
-
-          // Interpret the block as pure markdown.
-          const code = node.position
-            ? md.slice(node.position.start.offset, node.position.end.offset)
-            : toString(node);
-
-          blocks.push({
-            type: "markdown",
-            data: {
-              code,
-            },
-          });
-        }
-        break;
-
-      case "image": {
+      onlyImages.forEach((image) => {
         // @ts-ignore
-        addMediumBlock(node.data.id);
+        addMediumBlock(image.data.id);
+      });
+
+      continue;
+    }
+
+    switch (node.type) {
+      case "image":
+        {
+          // Finish the current markdown block.
+          finishMdBlock();
+
+          // @ts-ignore
+          addMediumBlock(node.data.id);
+        }
+        break;
+
+      // @ts-ignore: Ignore fallthrough error due to no break.
+      case "heading": {
+        // Set the title of the file to the first heading of the markdown document.
+        if (!file.title) file.title = toString(node);
+
+        // Do not break out of the switch.
       }
+
+      default:
+        // Continue the current markdown block.
+        if (mdStart === null) mdStart = node.position.start.offset!;
+        mdEnd = node.position.end.offset!;
     }
   }
+
+  // Finish the last markdown block.
+  finishMdBlock();
 
   return blocks;
 }
@@ -221,16 +252,16 @@ const uploadDocument = async (
   language: string,
 ) => {
   return await dataProvider.uploadDocument({
-    name: document.name,
     type: document.type,
-    version: 1,
+    name: document.title ?? document.name,
+    header: document.title ?? document.name,
     parent: document.parent,
-    header: document.name,
+    originId: document.originId,
     description: "",
     langCode: language,
     content: content,
-    originId: document.originId,
     media: Array.from(document.media ?? []),
+    version: 1,
   });
 };
 
@@ -251,13 +282,15 @@ const processFiles = async (
   structure: TDocument[],
   baseLanguage: string,
   languages: string[],
+  targetFolderIds?: Map<string, string>,
   parentIdsMap: Map<string, string> = new Map(),
 ) => {
   const childParentIdsMap = new Map();
 
   for (const document of structure) {
     // Set the parent ID for the base language version
-    document.parent = parentIdsMap.get(baseLanguage);
+    document.parent =
+      parentIdsMap.get(baseLanguage) ?? targetFolderIds?.get(baseLanguage);
 
     // Process the base language version
     const base = await processFile(document, baseLanguage);
@@ -270,7 +303,8 @@ const processFiles = async (
     // Process each translation of the current document
     for (const language of document.translations) {
       document.path = getTranslationPath(document.path, baseLanguage, language);
-      document.parent = parentIdsMap.get(language);
+      document.parent =
+        parentIdsMap.get(language) ?? targetFolderIds?.get(language);
       document.originId = base.id;
 
       const translatedDocument = await processFile(document, language);
@@ -288,15 +322,56 @@ const processFiles = async (
         document.children,
         baseLanguage,
         languages,
+        targetFolderIds,
         childParentIdsMap,
       );
     }
   }
 };
 
+async function uploadTargetFolder(
+  name: string,
+  baseLanguage: string,
+  languages: string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+
+  const origin = await dataProvider.uploadDocument({
+    version: 1,
+    name,
+    type: "folder",
+    header: name,
+    description: "",
+    langCode: baseLanguage,
+    content: [],
+    media: [],
+  });
+
+  result.set(baseLanguage, origin.id!);
+
+  for (const language of languages) {
+    const response = await dataProvider.uploadDocument({
+      version: 1,
+      originId: origin.id,
+      name,
+      type: "folder",
+      header: name,
+      description: "",
+      langCode: language,
+      content: [],
+      media: [],
+    });
+
+    result.set(language, response.id!);
+  }
+
+  return result;
+}
+
 export async function importFromDirectory(
   directory: string,
   baseLanguage: string,
+  targetFolder?: string,
 ) {
   const dir = path.join(directory, baseLanguage);
 
@@ -307,6 +382,10 @@ export async function importFromDirectory(
 
   console.log("Available languages", languages);
 
+  const targetFolderIds = targetFolder
+    ? await uploadTargetFolder(targetFolder, baseLanguage, languages)
+    : undefined;
+
   const structure = await buildStructure(dir, baseLanguage, languages);
-  await processFiles(structure, baseLanguage, languages);
+  await processFiles(structure, baseLanguage, languages, targetFolderIds);
 }
