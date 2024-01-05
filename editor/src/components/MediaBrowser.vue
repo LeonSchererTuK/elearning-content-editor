@@ -42,7 +42,7 @@
     <div v-else class="grid w-full mt-1" style="height: calc(100vh - 105px)">
       <div class="col-6">
         <DataTable
-          :value="$media.media"
+          :value="displayMedia"
           @row-select="selectItem($event)"
           selection-mode="multiple"
           v-model:selection="selection"
@@ -123,7 +123,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import ProgressSpinner from 'primevue/progressspinner';
 import Button from 'primevue/button';
 import SplitButton from 'primevue/splitbutton';
@@ -161,6 +161,9 @@ const props = defineProps({
     default: false,
   },
 });
+
+const displayMedia = computed(() => $media.media.filter((item) => item.originId == null));
+
 const emit = defineEmits(['media-selected']);
 
 const documentId = ref<string | undefined>(props.documentId); // documentId to show
