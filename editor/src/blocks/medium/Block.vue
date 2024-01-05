@@ -33,17 +33,9 @@
         mode="advanced"
       />
 
-      <Button
-        class="mv-3"
-        icon="fa-solid fa-folder-open"
-        @click="showDialog = true">
-      </Button>
+      <Button label="Open MediaBrowser" icon="fa-solid fa-times" />
       <Dialog v-model:visible="showDialog" modal header="Media Browser">
-        <MediaBrowser
-          :id="documentId"
-          :type="loadedMedium?.type"
-          :url="documentUrl"
-        />
+        <MediaBrowser :document-id="$documents.selectedDocument?.id" />
       </Dialog>
     </template>
 
@@ -61,7 +53,7 @@ import Message from 'primevue/message';
 import FileUpload, { type FileUploadUploaderEvent } from 'primevue/fileupload';
 import { Medium } from '../../services/data/types';
 import { useDocumentStore } from '../../stores/documents';
-import MediaBrowser from 'src/views/MediaBrowser.vue';
+import MediaBrowser from 'src/components/MediaBrowser.vue';
 
 const $documents = useDocumentStore();
 
