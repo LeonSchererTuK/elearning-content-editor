@@ -32,6 +32,11 @@
         @uploader="uploader"
         mode="advanced"
       />
+
+      <Button label="Open MediaBrowser" icon="fa-solid fa-times" />
+      <Dialog v-model:visible="showDialog" modal header="Media Browser">
+        <MediaBrowser :document-id="$documents.selectedDocument?.id" />
+      </Dialog>
     </template>
 
     <Message v-if="isNotFound && !loading" severity="warn" :closable="false">
@@ -48,6 +53,7 @@ import Message from 'primevue/message';
 import FileUpload, { type FileUploadUploaderEvent } from 'primevue/fileupload';
 import { Medium } from '../../services/data/types';
 import { useDocumentStore } from '../../stores/documents';
+import MediaBrowser from 'src/components/MediaBrowser.vue';
 
 const $documents = useDocumentStore();
 
@@ -79,6 +85,7 @@ const mediumId = ref<string>();
 const loadedMedium = ref<Medium>();
 const mediumUrl = ref<null | string>(null);
 const isNotFound = computed(() => props.modelValue.data.id && !mediumUrl.value);
+const showDialog = ref(false);
 
 // Load the medium when the ID changes.
 const loading = ref(true);
